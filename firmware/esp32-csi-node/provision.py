@@ -142,11 +142,24 @@ def flash_nvs(port, baud, nvs_bin):
             "--chip", "esp32s3",
             "--port", port,
             "--baud", str(baud),
-            "write_flash",
+            "--after", "hard-reset",
+            "write-flash",
             hex(NVS_PARTITION_OFFSET), bin_path,
         ]
         print(f"Flashing NVS partition ({len(nvs_bin)} bytes) to {port}...")
-        subprocess.check_call(cmd)
+        result = subprocess.run(cmd, capture_output=True, text=True)
+        if result.stdout:
+            print(result.stdout, end="")
+        if result.stderr:
+            print(result.stderr, end="", file=sys.stderr)
+        if result.returncode != 0:
+            output = f"{result.stdout}\n{result.stderr}"
+            if "Could not exclusively lock port" in output or "the port is busy or doesn't exist" in output:
+                raise RuntimeError(
+                    f"Serial port {port} is busy. Close serial monitors such as miniterm, "
+                    "screen, or another Python script, then retry."
+                )
+            raise subprocess.CalledProcessError(result.returncode, cmd)
         print("NVS provisioning complete!")
     finally:
         os.unlink(bin_path)
@@ -287,7 +300,7 @@ def main():
             f.write(nvs_bin)
         print(f"NVS binary saved to {out} ({len(nvs_bin)} bytes)")
         print(f"Flash manually: python -m esptool --chip esp32s3 --port {args.port} "
-              f"write_flash 0x9000 {out}")
+              f"write-flash 0x9000 {out}")
         return
 
     flash_nvs(args.port, args.baud, nvs_bin)
